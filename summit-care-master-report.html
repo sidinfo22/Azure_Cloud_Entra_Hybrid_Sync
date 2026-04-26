@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Summit Care Centralized Identity & Hybrid Network Architecture</title>
+    <meta
+      name="description"
+      content="Black-and-white master report for Summit Care Medical Clinic covering Azure-hosted SCGLOBAL.LOCAL, Microsoft Entra ID, master-leaf Active Directory trusts, Meraki VPN hubs, Azure VPN Gateway, GPO logon restrictions, Entra Connect Sync, MFA, RBAC, password writeback, and HIPAA-aligned safeguards."
+    />
+    <link rel="stylesheet" href="master-report.css" />
+  </head>
+  <body>
+    <main class="report-shell">
+      <section class="hero">
+        <span class="eyebrow">Master Report</span>
+        <h1>Summit Care Centralized Identity & Hybrid Network Architecture</h1>
+        <p class="subtitle">
+          This document presents a mock enterprise architecture for Summit Care
+          Medical Clinic. It shows how Azure, Microsoft Entra ID, on-premises Active
+          Directory, one-way trusts, regional VPN hubs, Azure VPN Gateway, GPO logon
+          restrictions, SSO, MFA, password hash sync, password writeback, RBAC, and
+          HIPAA-aligned safeguards can support secure multi-campus healthcare
+          operations without using any real company information.
+        </p>
+        <div class="title-meta">
+          <span class="title-chip">SCGLOBAL.LOCAL</span>
+          <span class="title-chip">summitcare.org</span>
+          <span class="title-chip">Master-Leaf AD</span>
+          <span class="title-chip">Hub-and-Spoke VPN</span>
+          <span class="title-chip">HIPAA Safeguards</span>
+        </div>
+        <div class="title-signoff">
+          <article class="title-signoff-card">
+            <h3>Project Goal</h3>
+            <p>
+              Centralize global identity in Azure while preserving each campus as an
+              independent local Active Directory environment with its own users,
+              groups, GPOs, resources, and operational boundaries.
+            </p>
+          </article>
+          <article class="title-signoff-card">
+            <h3>Key Rule</h3>
+            <p>
+              Tier A global users can authenticate across approved campuses. Tier B
+              local users stay restricted to their home campus through domain design
+              and GPO logon controls.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <nav class="toc">
+        <span class="kicker">Contents</span>
+        <div class="toc-grid">
+          <a href="#overview">Overview & Purpose</a>
+          <a href="#identity">Identity Architecture</a>
+          <a href="#network">Network & IP Scheme</a>
+          <a href="#sync">Entra Hybrid Sync Build</a>
+          <a href="#gpo">GPO Logon Restrictions</a>
+          <a href="#hipaa">HIPAA, Risks & Governance</a>
+          <a href="#summary">Final Summary</a>
+        </div>
+      </nav>
+
+      <section id="overview" class="section">
+        <span class="kicker">Overview</span>
+        <h2>Purpose And Objectives</h2>
+        <p class="lead">
+          Summit Care Medical Clinic needs centralized identity management, secure
+          cross-campus access for global staff, local autonomy for individual clinic
+          domains, and a private WAN-like network built with VPNs. Azure hosts the
+          central identity authority and provides the cloud security control plane.
+        </p>
+        <ul class="workflow-list">
+          <li>Centralize authentication and identity governance.</li>
+          <li>Keep campus Active Directory environments independent.</li>
+          <li>Allow Tier A global users to authenticate at approved campuses.</li>
+          <li>Restrict Tier B local users to their assigned campus.</li>
+          <li>Use regional hub-and-spoke VPN routing instead of direct campus-to-campus communication.</li>
+          <li>Enable SSO, MFA, Conditional Access, password hash sync, password writeback, RBAC, and audit logging.</li>
+        </ul>
+      </section>
+
+      <section id="identity" class="section">
+        <span class="kicker">Identity</span>
+        <h2>Master-Leaf Active Directory Model</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Layer</th>
+              <th>Summit Care Design</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Master domain</td>
+              <td>SCGLOBAL.LOCAL hosted in Azure</td>
+              <td>Central identity authority for Tier A global users and trust referrals.</td>
+            </tr>
+            <tr>
+              <td>Cloud tenant</td>
+              <td>summitcare.org in Microsoft Entra ID</td>
+              <td>Cloud identity, Microsoft 365 SSO, MFA, Conditional Access, password writeback, RBAC, and audit visibility.</td>
+            </tr>
+            <tr>
+              <td>East leaf domains</td>
+              <td>SCQNS.LOCAL, SCMAN.LOCAL, SCBKLYN.LOCAL, SCNWRK.LOCAL</td>
+              <td>Independent clinic domains for local users, GPOs, workstations, and local resources.</td>
+            </tr>
+            <tr>
+              <td>West leaf domains</td>
+              <td>SCPHX.LOCAL, SCDAL.LOCAL, SCDEN.LOCAL, SCLA.LOCAL</td>
+              <td>Independent clinic domains connected through the West regional hub.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Trust Model</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Relationship</th>
+              <th>Behavior</th>
+              <th>Security Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Campus to SCGLOBAL</td>
+              <td>Campus domains trust SCGLOBAL.LOCAL</td>
+              <td>Campus domain controllers can refer Tier A authentication requests to Azure.</td>
+            </tr>
+            <tr>
+              <td>SCGLOBAL to campus</td>
+              <td>SCGLOBAL does not trust campus domains</td>
+              <td>Local campus users cannot use SCGLOBAL as a bridge into other campuses.</td>
+            </tr>
+            <tr>
+              <td>Campus to campus</td>
+              <td>No direct trust</td>
+              <td>Reduces lateral movement and preserves local campus isolation.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Identity Tiers</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Stored In</th>
+              <th>Example</th>
+              <th>Access</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Tier A - Global</td>
+              <td>SCGLOBAL.LOCAL</td>
+              <td>sdaniel@summitcare.org</td>
+              <td>Can authenticate at authorized campuses through one-way trusts.</td>
+            </tr>
+            <tr>
+              <td>Tier B - Local</td>
+              <td>Campus AD</td>
+              <td>frontdesk01@scqns.local</td>
+              <td>Restricted to the home campus only.</td>
+            </tr>
+            <tr>
+              <td>Privileged Admin</td>
+              <td>SCGLOBAL and Entra roles</td>
+              <td>cloud-admin@summitcare.org</td>
+              <td>Protected with MFA, RBAC, least privilege, and audit logs.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Tier A Authentication Flow</h3>
+        <ol class="workflow-list">
+          <li>A Tier A user signs in as sdaniel@summitcare.org at a Dallas campus device.</li>
+          <li>SCDAL.LOCAL sees that the user is not a local Dallas account.</li>
+          <li>The Dallas domain controller uses the one-way trust to refer authentication to SCGLOBAL.LOCAL.</li>
+          <li>SCGLOBAL validates the credentials across the private VPN path.</li>
+          <li>The campus applies local authorization, workstation policy, and resource permissions.</li>
+        </ol>
+      </section>
+
+      <section id="network" class="section">
+        <span class="kicker">Network</span>
+        <h2>Hub-and-Spoke VPN And IP Scheme</h2>
+        <p class="lead">
+          The network design uses a different private IP scheme than the reference
+          material. Azure owns 10.90.0.0/16, the East region owns 10.91.0.0/16,
+          and the West region owns 10.92.0.0/16.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Zone</th>
+              <th>CIDR</th>
+              <th>Example Systems</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Azure identity backbone</td>
+              <td>10.90.0.0/16</td>
+              <td>SCGLOBAL DCs, sync server, management services, Azure VPN Gateway.</td>
+            </tr>
+            <tr>
+              <td>Azure identity subnet</td>
+              <td>10.90.10.0/24</td>
+              <td>SCGLOBAL-DC01 10.90.10.10, SCGLOBAL-DC02 10.90.10.11, SC-SYNC01 10.90.10.20.</td>
+            </tr>
+            <tr>
+              <td>Azure gateway subnet</td>
+              <td>10.90.254.0/27</td>
+              <td>Azure VPN Gateway for hub-to-cloud tunnels.</td>
+            </tr>
+            <tr>
+              <td>East region</td>
+              <td>10.91.0.0/16</td>
+              <td>Queens hub, Manhattan, Brooklyn, Newark.</td>
+            </tr>
+            <tr>
+              <td>West region</td>
+              <td>10.92.0.0/16</td>
+              <td>Phoenix hub, Dallas, Denver, Los Angeles.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Regional Routing</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Region</th>
+              <th>Hub</th>
+              <th>Spokes</th>
+              <th>Path</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>East</td>
+              <td>Queens Hub 10.91.0.0/24</td>
+              <td>Manhattan 10.91.10.0/24, Brooklyn 10.91.20.0/24, Newark 10.91.30.0/24</td>
+              <td>Campus Meraki VPN to Queens, then Queens to Azure VPN Gateway.</td>
+            </tr>
+            <tr>
+              <td>West</td>
+              <td>Phoenix Hub 10.92.0.0/24</td>
+              <td>Dallas 10.92.10.0/24, Denver 10.92.20.0/24, Los Angeles 10.92.30.0/24</td>
+              <td>Campus Meraki VPN to Phoenix, then Phoenix to Azure VPN Gateway.</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout">
+          Campuses do not communicate directly. The intended path is Campus to
+          Meraki VPN, Meraki VPN to regional hub, regional hub to Azure VPN Gateway,
+          then Azure to SCGLOBAL services.
+        </div>
+
+        <h3>Trust Network Requirements</h3>
+        <ul class="workflow-list">
+          <li>Every campus DNS server uses conditional forwarders for SCGLOBAL.LOCAL pointing to 10.90.10.10 and 10.90.10.11.</li>
+          <li>VPN and firewall rules allow Kerberos, LDAP, DNS, and required domain controller communication between campus DCs and SCGLOBAL DCs.</li>
+          <li>Domain controllers use reliable NTP because Kerberos authentication is time-sensitive.</li>
+          <li>Campus domains create one-way outgoing trusts to SCGLOBAL.LOCAL.</li>
+          <li>No campus creates a direct trust with another campus.</li>
+        </ul>
+      </section>
+
+      <section id="sync" class="section">
+        <span class="kicker">Hybrid Sync</span>
+        <h2>Microsoft Entra Hybrid Identity Sync Build</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Prerequisite</th>
+              <th>Summit Care Standard</th>
+              <th>Validation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Active Directory health</td>
+              <td>AD 2016 or newer recommended, clean DNS, healthy replication.</td>
+              <td>Run dcdiag /v and repadmin /replsummary.</td>
+            </tr>
+            <tr>
+              <td>Cloud tenant</td>
+              <td>summitcare.org verified in Microsoft Entra ID.</td>
+              <td>Confirm DNS TXT verification in Entra admin center.</td>
+            </tr>
+            <tr>
+              <td>UPN alignment</td>
+              <td>Users sign in as user@summitcare.org where cloud identity is required.</td>
+              <td>No user@localdomain.local cloud sign-in names.</td>
+            </tr>
+            <tr>
+              <td>Sync server</td>
+              <td>SC-SYNC01, domain joined, static IP 10.90.10.20, patched, dedicated to sync.</td>
+              <td>A dedicated member server is preferred; a DC install can work in a lab but is not the production ideal.</td>
+            </tr>
+            <tr>
+              <td>Networking</td>
+              <td>Outbound HTTPS TCP 443 to Microsoft endpoints.</td>
+              <td>No SSL inspection or firewall policy breaks sync traffic.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Deployment Steps</h3>
+        <ol class="workflow-list">
+          <li>Prepare Active Directory by fixing replication, DNS, duplicate user, duplicate mail, and duplicate proxyAddresses issues.</li>
+          <li>Verify summitcare.org in Microsoft Entra ID and plan licenses for Conditional Access, SSPR, and writeback features.</li>
+          <li>Configure the UPN suffix in Active Directory Domains and Trusts, then update users to match the verified cloud domain.</li>
+          <li>Build SC-SYNC01 as a domain-joined sync server with static IP, OS patches, and access to all required domain controllers.</li>
+          <li>Download Microsoft Entra Connect Sync from the Entra admin center.</li>
+          <li>Choose customized settings and connect with the required Entra and on-premises administrative permissions.</li>
+          <li>Select Password Hash Sync as the recommended authentication method. Enable Seamless SSO and password writeback where policy and licensing support them.</li>
+          <li>Select OUs to sync and filter out stale, disabled, service, or lab objects that should not appear in the cloud.</li>
+          <li>Run Start-ADSyncSyncCycle -PolicyType Initial and review Synchronization Service Manager.</li>
+          <li>Validate users, groups, UPNs, mail attributes, Microsoft 365 sign-in, Teams, Outlook, MFA, and password reset behavior.</li>
+        </ol>
+
+        <h3>Ongoing Commands And Checks</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Command Or Location</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>AD health</td>
+              <td>dcdiag /v</td>
+              <td>Find domain controller, DNS, and service issues.</td>
+            </tr>
+            <tr>
+              <td>Replication summary</td>
+              <td>repadmin /replsummary</td>
+              <td>Confirm AD replication is healthy before sync.</td>
+            </tr>
+            <tr>
+              <td>Delta sync</td>
+              <td>Start-ADSyncSyncCycle -PolicyType Delta</td>
+              <td>Push normal recent changes.</td>
+            </tr>
+            <tr>
+              <td>Initial sync</td>
+              <td>Start-ADSyncSyncCycle -PolicyType Initial</td>
+              <td>Use after major scope or connector changes.</td>
+            </tr>
+            <tr>
+              <td>Sync review</td>
+              <td>miisclient.exe and Entra admin center</td>
+              <td>Review imports, exports, errors, and cloud sync state.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="gpo" class="section">
+        <span class="kicker">GPO Isolation</span>
+        <h2>Cross-Domain Local Logon Restrictions</h2>
+        <p class="lead">
+          Summit Care uses GPO deny-local-logon controls to prevent local Tier B
+          users from interactively logging into computers outside their assigned
+          campus. This is separate from the Tier A global authentication model.
+        </p>
+
+        <h3>Example: Block Queens Users From Brooklyn Workstations</h3>
+        <ol class="workflow-list">
+          <li>On the Brooklyn domain controller, open Active Directory Users and Computers.</li>
+          <li>Create a global security group named Deny_SCQNS_Login in SCBKLYN.LOCAL.</li>
+          <li>Add the Queens Domain Users group from SCQNS.LOCAL as a member.</li>
+          <li>Open Group Policy Management and create Deny SCQNS Logon To SCBKLYN.</li>
+          <li>Edit Computer Configuration, Policies, Windows Settings, Security Settings, Local Policies, User Rights Assignment.</li>
+          <li>Open Deny log on locally and add Deny_SCQNS_Login.</li>
+          <li>Link the GPO to the SCBKLYN_Workstations OU.</li>
+          <li>Run gpupdate /force on a Brooklyn workstation.</li>
+          <li>Test with a Queens Tier B account and confirm the sign-in method is not allowed.</li>
+        </ol>
+
+        <h3>Reverse Restriction</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>Queens Domain Action</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Create group</td>
+              <td>Deny_SCBKLYN_Login</td>
+              <td>Defines Brooklyn users that should not log into Queens workstations.</td>
+            </tr>
+            <tr>
+              <td>Add members</td>
+              <td>Add SCBKLYN\Domain Users or a targeted Brooklyn user group.</td>
+              <td>Targets Brooklyn Tier B identities.</td>
+            </tr>
+            <tr>
+              <td>Create GPO</td>
+              <td>Deny SCBKLYN Logon To SCQNS</td>
+              <td>Documents the restriction in Group Policy.</td>
+            </tr>
+            <tr>
+              <td>Configure policy</td>
+              <td>Add Deny_SCBKLYN_Login to Deny log on locally.</td>
+              <td>Blocks interactive local sign-in.</td>
+            </tr>
+            <tr>
+              <td>Link and test</td>
+              <td>Link to SCQNS_Workstations and run gpupdate /force.</td>
+              <td>Confirms the restriction works before broad rollout.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          Do not deny Domain Admins, Enterprise Admins, local Administrators, SYSTEM,
+          or emergency break-glass accounts. Apply these GPOs to workstation OUs,
+          not domain controller OUs.
+        </div>
+      </section>
+
+      <section id="hipaa" class="section">
+        <span class="kicker">HIPAA</span>
+        <h2>Security, Risk, And Governance</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Safeguard Area</th>
+              <th>Azure / Entra Control</th>
+              <th>Summit Care Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Unique user identification</td>
+              <td>UPN alignment, named accounts, Entra user inventory.</td>
+              <td>User actions map back to individual staff identities.</td>
+            </tr>
+            <tr>
+              <td>Person or entity authentication</td>
+              <td>MFA, PHS, Conditional Access, password policy.</td>
+              <td>Reduces risk from stolen passwords and weak sign-in behavior.</td>
+            </tr>
+            <tr>
+              <td>Access control</td>
+              <td>RBAC, groups, app assignment, Conditional Access.</td>
+              <td>Limits access to authorized staff and least-privilege admins.</td>
+            </tr>
+            <tr>
+              <td>Audit controls</td>
+              <td>Entra audit logs, sign-in logs, role assignment history.</td>
+              <td>Supports review of who accessed systems and what changed.</td>
+            </tr>
+            <tr>
+              <td>Access termination</td>
+              <td>Disable or delete workflow, session revocation, sync validation.</td>
+              <td>Improves offboarding speed and reduces lingering access.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Potential Blockers</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Blocker</th>
+              <th>Risk</th>
+              <th>Mitigation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Regional hub failure</td>
+              <td>Spokes may lose their Azure path for Tier A authentication.</td>
+              <td>Use HA Meraki pairs, redundant ISPs, and failover testing.</td>
+            </tr>
+            <tr>
+              <td>DNS resolution failure</td>
+              <td>Campus domains cannot locate SCGLOBAL.LOCAL domain controllers.</td>
+              <td>Use conditional forwarders to 10.90.10.10 and 10.90.10.11.</td>
+            </tr>
+            <tr>
+              <td>VPN Gateway bandwidth</td>
+              <td>Hub-to-cloud traffic can bottleneck.</td>
+              <td>Choose the correct Gateway SKU and monitor tunnel utilization.</td>
+            </tr>
+            <tr>
+              <td>Latency for remote regions</td>
+              <td>Authentication can feel slow across distant sites.</td>
+              <td>Choose a balanced Azure region or deploy another SCGLOBAL DC closer to the West hub.</td>
+            </tr>
+            <tr>
+              <td>Dirty AD before sync</td>
+              <td>Duplicates and replication issues cause sync failures.</td>
+              <td>Run dcdiag, repadmin, duplicate checks, and UPN cleanup first.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="summary" class="section">
+        <span class="kicker">Summary</span>
+        <h2>Final Result</h2>
+        <p class="lead">
+          The final Summit Care architecture creates centralized cloud control without
+          collapsing every clinic into one flat trust model. SCGLOBAL.LOCAL in Azure
+          acts as the master identity authority, summitcare.org in Microsoft Entra ID
+          provides cloud governance, regional VPN hubs provide private connectivity,
+          and campus domains retain local autonomy. Tier A users can authenticate
+          where authorized; Tier B users stay local. Azure and Entra add SSO, MFA,
+          Conditional Access, password hash sync, password writeback, RBAC, audit
+          logs, and HIPAA-aligned evidence. The design is secure, segmented,
+          scalable, and ready to support many Summit Care Medical Clinic locations.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
